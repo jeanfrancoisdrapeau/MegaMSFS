@@ -1,1 +1,1 @@
-# MEgaMSFS
+# MegaMSFS
