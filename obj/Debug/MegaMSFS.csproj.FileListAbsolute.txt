@@ -1,0 +1,10 @@
+C:\Users\User\source\repos\MegaMSFS\bin\Debug\MegaMSFS.exe.config
+C:\Users\User\source\repos\MegaMSFS\bin\Debug\MegaMSFS.exe
+C:\Users\User\source\repos\MegaMSFS\bin\Debug\MegaMSFS.pdb
+C:\Users\User\source\repos\MegaMSFS\obj\Debug\MegaMSFS.csprojAssemblyReference.cache
+C:\Users\User\source\repos\MegaMSFS\obj\Debug\MegaMSFS.Form1.resources
+C:\Users\User\source\repos\MegaMSFS\obj\Debug\MegaMSFS.Properties.Resources.resources
+C:\Users\User\source\repos\MegaMSFS\obj\Debug\MegaMSFS.csproj.GenerateResource.cache
+C:\Users\User\source\repos\MegaMSFS\obj\Debug\MegaMSFS.csproj.CoreCompileInputs.cache
+C:\Users\User\source\repos\MegaMSFS\obj\Debug\MegaMSFS.exe
+C:\Users\User\source\repos\MegaMSFS\obj\Debug\MegaMSFS.pdb
