@@ -20,6 +20,8 @@ namespace MegaMSFS
         public ArduinoControllerMain Acm;
         public SerialPort activeSerial;
 
+        private long nbFromSimconnect = 0;
+
         public Form1()
         {
             InitializeComponent();
@@ -85,6 +87,10 @@ namespace MegaMSFS
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT ALTITUDE LOCK", "bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT YAW DAMPER", "bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
 
+                    MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT HEADING LOCK DIR", "degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT ALTITUDE LOCK VAR", "feet", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT VERTICAL HOLD VAR", "feet/minute", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "FUEL TOTAL QUANTITY", "gallons", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "FUEL TOTAL CAPACITY", "gallons", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
 
@@ -94,6 +100,11 @@ namespace MegaMSFS
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "TRANSPONDER CODE:1", "number", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "KOHLSMAN SETTING HG", "inHg", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "Plane Heading Degrees Magnetic", "radians", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+
+                    MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AMBIENT WIND VELOCITY", "knots", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AMBIENT WIND DIRECTION", "degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+
+                    MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "FLAPS HANDLE PERCENT", "Percent over 100", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
 
                     // IMPORTANT: register it with the simconnect managed wrapper marshaller
                     // if you skip this step, you will only receive a uint in the .dwData field.
@@ -144,7 +155,7 @@ namespace MegaMSFS
                     MySimConnect.simconnect.RequestDataOnSimObject(MySimConnect.DATA_REQUESTS.REQUEST_1
                          , MySimConnect.DEFINITIONS.Struct1
                          , SimConnect.SIMCONNECT_OBJECT_ID_USER
-                         , SIMCONNECT_PERIOD.SECOND
+                         , SIMCONNECT_PERIOD.VISUAL_FRAME
                          , SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT
                          , 0
                          , 0
@@ -159,40 +170,57 @@ namespace MegaMSFS
 
         void simconnect_OnRecvSimobjectData(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
         {
-            if (Acm.CurrentPort != null)
+            nbFromSimconnect += 1;
+            if (!Acm.AlreadySending)
             {
-                switch ((MySimConnect.DATA_REQUESTS)data.dwRequestID)
+                if (Acm.CurrentPort != null)
                 {
-                    case MySimConnect.DATA_REQUESTS.REQUEST_1:
-                        MySimConnect.Struct1 s1 = (MySimConnect.Struct1)data.dwData[0];
+                    switch ((MySimConnect.DATA_REQUESTS)data.dwRequestID)
+                    {
+                        case MySimConnect.DATA_REQUESTS.REQUEST_1:
+                            MySimConnect.Struct1 s1 = (MySimConnect.Struct1)data.dwData[0];
 
-                        string msg;
-                        msg = "<DATA;";
-                        msg += s1.autopilot + ";";
-                        msg += s1.yawdamp_h + ";";
-                        msg += Convert.ToInt32(s1.altitude) + ";";
-                        msg += Convert.ToInt32(s1.heading * 180 / Math.PI) + ";";
-                        msg += Math.Round(s1.altimeter, 2) + ";";
-                        msg += Math.Round(s1.fuel_quantity / s1.fuel_capacity * 100) + ";";
+                            string msg;
+                            msg = "<DATA;";
+                            msg += s1.autopilot + ";";
+                            msg += s1.yawdamp_h + ";";
+                            msg += Convert.ToInt32(s1.altitude) + ";";
+                            msg += Convert.ToInt32(s1.heading * 180 / Math.PI) + ";";
+                            msg += Math.Round(s1.altimeter, 2) + ";";
+                            msg += Math.Round(s1.fuel_quantity / s1.fuel_capacity * 100) + ";";
+                            msg += Math.Round(s1.wind_direction) + ";";
+                            msg += Math.Round(s1.wind_velocity) + ";";
+                            msg += Math.Round(s1.flaps * 100) + ";";
 
-                        msg += "  ";
-                        msg += (s1.autopilot == 1 ? "AP" : "--");
-                        msg += (s1.yawdamp_h == 1 ? "YD" : "--");
-                        msg += (s1.heading_h == 1 ? "HDG" : "---");
-                        msg += (s1.approach_h == 1 ? "APR" : "---");
-                        msg += (s1.nav_h == 1 ? "NAV" : "---");
-                        msg += (s1.altitude_h == 1 ? "ALT" : "---");
+                            msg += Convert.ToInt32(s1.heading_var) + ";";
+                            msg += Convert.ToInt32(s1.altitude_var) + ";";
+                            msg += Convert.ToInt32(s1.vs_var) + ";";
 
-                        msg += ">";
+                            //msg += Convert.ToInt32(s1.autopilot) + ";";
+                            //msg += Convert.ToInt32(s1.yawdamp_h) + ";";
+                            //msg += Convert.ToInt32(s1.heading_h) + ";";
+                            //msg += Convert.ToInt32(s1.approach_h) + ";";
+                            //msg += Convert.ToInt32(s1.nav_h) + ";";
+                            //msg += Convert.ToInt32(s1.altitude_h) + ";";
 
-                        DisplayInfo("(" + Acm.CurrentPort.PortName + "): SEND: " + msg);
+                            msg += (s1.autopilot == 1 ? "AP" : "--");
+                            msg += (s1.yawdamp_h == 1 ? "YD" : "--");
+                            msg += (s1.heading_h == 1 ? "HDG" : "---");
+                            msg += (s1.approach_h == 1 ? "APR" : "---");
+                            msg += (s1.nav_h == 1 ? "NAV" : "---");
+                            msg += (s1.altitude_h == 1 ? "ALT" : "---");
 
-                        Acm.SendValue(msg);
+                            msg += ";END;>";
 
-                        break;
+                            //DisplayInfo("(" + Acm.CurrentPort.PortName + "): SEND: " + msg);
 
-                    default:
-                        break;
+                            Acm.SendValue(msg);
+
+                            break;
+
+                        default:
+                            break;
+                    }
                 }
             }
         }
@@ -215,11 +243,29 @@ namespace MegaMSFS
 
         private void button1_Click(object sender, EventArgs e)
         {
-            DisplayInfo("Trying to connect to Arduino on " + textBox3.Text);
-            Acm.SetComPort(textBox3.Text);
+            if (Acm.CurrentPort != null)
+            {
+                if (Acm.CurrentPort.IsOpen)
+                {
+                    DisplayInfo("Closing connection to Arduino");
+                    Acm.PortFound = false;
+                    Acm.CurrentPort.Close();
+                    Acm.CurrentPort = null;
 
-            DisplayInfo("Sending handshake (you should see zeroed gauges on the Arduino).");
-            Acm.SendHandShake();
+                    button1.Text = "Connect to Arduino";
+                }
+            }
+            else
+            {
+                DisplayInfo("Trying to connect to Arduino on " + textBox3.Text + "...");
+                Acm.SetComPort(textBox3.Text);
+
+                DisplayInfo("Sending handshake...");
+                Acm.SendHandShake();
+
+                if (Acm.CurrentPort.IsOpen)
+                    button1.Text = "Disconnect from Arduino";
+            }
         }
 
         private void button2_Click(object sender, EventArgs e)
@@ -228,11 +274,20 @@ namespace MegaMSFS
             {
                 MySimConnect.simconnect = new SimConnect("MegaMSFS", this.Handle, MySimConnect.WM_USER_SIMCONNECT, null, 0);
                 initDataRequest();
+
+                button2.Enabled = false;
             }
             catch (Exception ex)
             {
                 DisplayInfo("Error trying to connect to SimConnect: " + ex.Message);
             }
+        }
+
+        private void timer1_Tick(object sender, EventArgs e)
+        {
+            label2.Text = nbFromSimconnect.ToString();
+            label3.Text = Acm.nbFromArduino.ToString();
+            label5.Text = Acm.nbToArduino.ToString();
         }
     }
 
@@ -253,6 +308,10 @@ namespace MegaMSFS
             public double altitude_h;
             public double yawdamp_h;
 
+            public double heading_var;
+            public double altitude_var;
+            public double vs_var;
+
             public double fuel_quantity;
             public double fuel_capacity;
 
@@ -262,6 +321,11 @@ namespace MegaMSFS
             public double transponder;
             public double altimeter;
             public double heading;
+
+            public double wind_velocity;
+            public double wind_direction;
+
+            public double flaps;
         };
 
         public enum DEFINITIONS
@@ -305,101 +369,131 @@ namespace MegaMSFS
         public bool PortFound = false;
         public bool AlreadySending = false;
 
+        public long nbFromArduino = 0;
+        public long nbToArduino = 0;
+
         public void SetComPort(string port)
         {
             try
             {
+                if (CurrentPort != null)
+                {
+                    if (CurrentPort.IsOpen)
+                    {
+                        CurrentPort.Close();
+                        CurrentPort = null;
+                    }
+                }
+
                 CurrentPort = new SerialPort(port, 9600);
                 CurrentPort.DataReceived += CurrentPort_DataReceived;
                 CurrentPort.Open();
             }
             catch (Exception e)
             {
+                PortFound = false;
+                CurrentPort.Close();
             }
         }
 
         private void CurrentPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
+            nbFromArduino += 1;
+
             try
             {
                 string inData = CurrentPort.ReadLine();
-                //Debug.WriteLine(inData);
+                //Debug.WriteLine(inData.Replace('\r', ' '));
 
-                if (MySimConnect.simconnect != null)
+                switch (inData)
                 {
-                    switch (inData)
-                    {
-                        case "handshake_arduino\r":
-                            PortFound = true;
-                            break;
+                    case "handshakearduino\r":
+                        PortFound = true;
+                        AlreadySending = false;
+                        break;
 
-                        case "MESSAGE RECEIVED\r":
-                            AlreadySending = false;
-                            break;
+                    case "MESSAGE RECEIVED\r":
+                        AlreadySending = false;
+                        break;
 
-                        case "set_autopilot_onoff\r":
+                    case "set_autopilot_onoff\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.AUTOPILOT_ONOFF, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_yawdamp_onoff\r":
+                    case "set_yawdamp_onoff\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.YAWDAMP_ONOFF, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_heading_onoff\r":
+                    case "set_heading_onoff\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.HEADING_ONOFF, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_approach_onoff\r":
+                    case "set_approach_onoff\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.APPROACH_ONOFF, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_nav_onoff\r":
+                    case "set_nav_onoff\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.NAV_ONOFF, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_altitude_onoff\r":
+                    case "set_altitude_onoff\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.ALTITUDE_ONOFF, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_vs_onoff\r":
+                    case "set_vs_onoff\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.VS_ONOFF, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_altimeter_up\r":
+                    case "set_altimeter_up\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.ALTIMETER_UP, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_altimeter_down\r":
+                    case "set_altimeter_down\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.ALTIMETER_DOWN, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_heading_left\r":
+                    case "set_heading_left\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.HEADING_LEFT, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_heading_right\r":
+                    case "set_heading_right\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.HEADING_RIGHT, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_altitude_down\r":
+                    case "set_altitude_down\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.ALTITUDE_DOWN, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_altitude_up\r":
+                    case "set_altitude_up\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.ALTITUDE_UP, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_vertical_down\r":
+                    case "set_vertical_down\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.VERTICAL_DOWN, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        case "set_vertical_up\r":
+                    case "set_vertical_up\r":
+                        if (MySimConnect.simconnect != null)
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.VERTICAL_UP, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-                            break;
+                        break;
 
-                        default:
-                            break;
-                    }
+                    default:
+                        AlreadySending = false;
+                        break;
                 }
             }
             catch (Exception ex)
@@ -412,13 +506,10 @@ namespace MegaMSFS
         {
             if (CurrentPort.IsOpen)
             {
-                var buffer = new List<byte>();
-                buffer.AddRange(Encoding.ASCII.GetBytes("<handshake_pc>"));
-                buffer.Add(Convert.ToByte(4));
+                nbToArduino += 1;
 
-                var bufferArray = buffer.ToArray();
-
-                CurrentPort.Write(bufferArray, 0, bufferArray.Length);
+                AlreadySending = true;
+                CurrentPort.WriteLine("<handshakepc;END;>");
             }
         }
 
@@ -428,16 +519,10 @@ namespace MegaMSFS
             {
                 try
                 {
-                    //var buffer = new List<byte>();
-                    //buffer.AddRange(Encoding.ASCII.GetBytes(msg));
-                    //buffer.Add(Convert.ToByte(4));
+                    nbToArduino += 1;
 
-                    //var bufferArray = buffer.ToArray();
-
-                    //CurrentPort.Write(bufferArray, 0, bufferArray.Length);
-
+                    AlreadySending = true;
                     CurrentPort.WriteLine(msg);
-                    //AlreadySending = true;
                 }
                 catch (Exception ex)
                 {
