@@ -86,6 +86,7 @@ namespace MegaMSFS
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT NAV1 LOCK", "bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT ALTITUDE LOCK", "bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT YAW DAMPER", "bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT VERTICAL HOLD", "bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
 
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT HEADING LOCK DIR", "degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     MySimConnect.simconnect.AddToDataDefinition(MySimConnect.DEFINITIONS.Struct1, "AUTOPILOT ALTITUDE LOCK VAR", "feet", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
@@ -146,6 +147,11 @@ namespace MegaMSFS
                     MySimConnect.simconnect.MapClientEventToSimEvent(MySimConnect.EVENT_CTRL.HEADING_RIGHT, "HEADING_BUG_INC");
                     MySimConnect.simconnect.AddClientEventToNotificationGroup(MySimConnect.GROUP_IDS.GROUP_1, MySimConnect.EVENT_CTRL.HEADING_RIGHT, false);
 
+                    MySimConnect.simconnect.MapClientEventToSimEvent(MySimConnect.EVENT_CTRL.SYNC_HEADING, "HEADING_BUG_SET");
+                    MySimConnect.simconnect.AddClientEventToNotificationGroup(MySimConnect.GROUP_IDS.GROUP_1, MySimConnect.EVENT_CTRL.SYNC_HEADING, false);
+                    MySimConnect.simconnect.MapClientEventToSimEvent(MySimConnect.EVENT_CTRL.SYNC_ALTITUDE, "AP_ALT_VAR_SET_ENGLISH");
+                    MySimConnect.simconnect.AddClientEventToNotificationGroup(MySimConnect.GROUP_IDS.GROUP_1, MySimConnect.EVENT_CTRL.SYNC_ALTITUDE, false);
+
                     MySimConnect.simconnect.SetNotificationGroupPriority(MySimConnect.GROUP_IDS.GROUP_1, SimConnect.SIMCONNECT_GROUP_PRIORITY_HIGHEST);
 
                     // catch a simobject data request
@@ -180,10 +186,19 @@ namespace MegaMSFS
                         case MySimConnect.DATA_REQUESTS.REQUEST_1:
                             MySimConnect.Struct1 s1 = (MySimConnect.Struct1)data.dwData[0];
 
+                            MySimConnect.curHeading = Convert.ToUInt32(s1.heading * 180 / Math.PI);
+                            MySimConnect.curAltitude = Convert.ToInt32(s1.altitude);
+
                             string msg;
                             msg = "<DATA;";
                             msg += s1.autopilot + ";";
                             msg += s1.yawdamp_h + ";";
+                            msg += s1.heading_h + ";";
+                            msg += s1.approach_h + ";";
+                            msg += s1.nav_h + ";";
+                            msg += s1.altitude_h + ";";
+                            msg += s1.vs_h + ";";
+
                             msg += Convert.ToInt32(s1.altitude) + ";";
                             msg += Convert.ToInt32(s1.heading * 180 / Math.PI) + ";";
                             msg += Math.Round(s1.altimeter, 2) + ";";
@@ -196,19 +211,12 @@ namespace MegaMSFS
                             msg += Convert.ToInt32(s1.altitude_var) + ";";
                             msg += Convert.ToInt32(s1.vs_var) + ";";
 
-                            //msg += Convert.ToInt32(s1.autopilot) + ";";
-                            //msg += Convert.ToInt32(s1.yawdamp_h) + ";";
-                            //msg += Convert.ToInt32(s1.heading_h) + ";";
-                            //msg += Convert.ToInt32(s1.approach_h) + ";";
-                            //msg += Convert.ToInt32(s1.nav_h) + ";";
-                            //msg += Convert.ToInt32(s1.altitude_h) + ";";
-
                             msg += (s1.autopilot == 1 ? "AP" : "--");
                             msg += (s1.yawdamp_h == 1 ? "YD" : "--");
                             msg += (s1.heading_h == 1 ? "HDG" : "---");
                             msg += (s1.approach_h == 1 ? "APR" : "---");
                             msg += (s1.nav_h == 1 ? "NAV" : "---");
-                            msg += (s1.altitude_h == 1 ? "ALT" : "---");
+                            msg += (s1.altitude_h == 1 ? "ALT" : (s1.vs_h == 1 ? "VS-" : "---"));
 
                             msg += ";END;>";
 
@@ -296,6 +304,9 @@ namespace MegaMSFS
         public const int WM_USER_SIMCONNECT = 0x0402;
         public static SimConnect simconnect;
 
+        public static uint curHeading;
+        public static int curAltitude;
+
         // this is how you declare a data structure so that
         // simconnect knows how to fill it/read it.
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -307,6 +318,7 @@ namespace MegaMSFS
             public double nav_h;
             public double altitude_h;
             public double yawdamp_h;
+            public double vs_h;
 
             public double heading_var;
             public double altitude_var;
@@ -355,6 +367,8 @@ namespace MegaMSFS
             ALTITUDE_UP,
             VERTICAL_DOWN,
             VERTICAL_UP,
+            SYNC_HEADING,
+            SYNC_ALTITUDE,
         }
 
         public enum GROUP_IDS
@@ -403,7 +417,7 @@ namespace MegaMSFS
             try
             {
                 string inData = CurrentPort.ReadLine();
-                //Debug.WriteLine(inData.Replace('\r', ' '));
+                Debug.WriteLine(inData.Replace('\r', ' '));
 
                 switch (inData)
                 {
@@ -412,7 +426,7 @@ namespace MegaMSFS
                         AlreadySending = false;
                         break;
 
-                    case "MESSAGE RECEIVED\r":
+                    case "READY\r":
                         AlreadySending = false;
                         break;
 
@@ -491,8 +505,18 @@ namespace MegaMSFS
                             MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.VERTICAL_UP, 0, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
                         break;
 
+                    case "sync_heading\r":
+                        if (MySimConnect.simconnect != null)
+                            MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.SYNC_HEADING, MySimConnect.curHeading, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+                        break;
+
+                    case "sync_altitude\r":
+                        if (MySimConnect.simconnect != null)
+                            MySimConnect.simconnect.TransmitClientEvent(0, MySimConnect.EVENT_CTRL.SYNC_ALTITUDE, (uint)MySimConnect.curAltitude, MySimConnect.GROUP_IDS.GROUP_1, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+                        break;
+
                     default:
-                        AlreadySending = false;
+                        //AlreadySending = false;
                         break;
                 }
             }
